@@ -1,0 +1,172 @@
+// ========================================================
+// 🌐 UWO™ CENTRAL API SERVICE
+// ========================================================
+
+export const BACKEND_BASE = typeof window !== 'undefined'
+  ? ((window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") && (window.location.port === "3000" || window.location.port === "5173" || window.location.port === "5174") ? "http://localhost:8080" : "")
+  : "";
+
+export const API_URL = `${BACKEND_BASE}/api`;
+
+export const getApiUrl = () => API_URL;
+
+export const REFERRAL_BACKEND = typeof window !== 'undefined' && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+  ? "http://localhost:8080"
+  : "https://referrals-api.uwo24.com";
+
+export const DASHBOARD_LOGIN_URL = typeof window !== 'undefined' && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+  ? "http://localhost:5173/user/"
+  : "/user/";
+
+// Centralized fetch helper with auth header injection
+export async function apiRequest(endpoint, options = {}) {
+  const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('uwo_token') || localStorage.getItem('uwo_partner_token')) : null;
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
+  const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  const res = await fetch(url, { ...options, headers });
+  
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    data = null;
+  }
+
+  if (!res.ok) {
+    const errorMsg = (data && (data.message || data.error)) || `Request failed with status ${res.status}`;
+    throw new Error(errorMsg);
+  }
+
+  return data;
+}
+
+// Flagship Projects API
+export async function fetchProjects() {
+  return await apiRequest('/projects/public');
+}
+
+// Blog Posts API
+export async function fetchBlogs() {
+  return await apiRequest('/blogs');
+}
+
+export async function fetchBlogBySlug(slug) {
+  return await apiRequest(`/blogs/${slug}`);
+}
+
+// Fallback & Resolve image helpers for Blogs
+export function getBlogFallbackImage(category = '', title = '') {
+  const cat = (category || '').toLowerCase();
+  const t = (title || '').toLowerCase();
+
+  // AI & Automation — purple/neural wave
+  if (cat.includes('automation') || cat.includes('ai & auto') || t.includes('automation') || t.includes('assistant') || t.includes('aisa')) {
+    return 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80';
+  }
+  // AISA™ category
+  if (cat.includes('aisa')) {
+    return 'https://images.unsplash.com/photo-1677442135703-1787eea5ce01?auto=format&fit=crop&w=1200&q=80';
+  }
+  // Technology & AI — digital/matrix
+  if (cat.includes('tech') || cat.includes('technology') || cat.includes('ai') || t.includes('ai') || t.includes('intelligence') || t.includes('ecosystem')) {
+    return 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80';
+  }
+  // Digital Commerce / Business
+  if (cat.includes('commerce') || cat.includes('business') || cat.includes('marketing') || t.includes('brand') || t.includes('commerce')) {
+    return 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80';
+  }
+  // Research
+  if (cat.includes('research') || t.includes('study') || t.includes('research')) {
+    return 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80';
+  }
+  // Default — futuristic blue glow
+  return 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&w=1200&q=80';
+}
+
+export const CLOUD_RUN_BACKEND = typeof window !== 'undefined' && window.location.origin.includes('uwo24.com')
+  ? window.location.origin
+  : "https://uwo24.com";
+
+export function resolveBlogImageUrl(blog) {
+  if (!blog) return getBlogFallbackImage();
+  const img = blog.coverImage || blog.featuredImage || blog.image;
+  if (!img) return getBlogFallbackImage(blog.category, blog.title);
+
+  // GCS Private assets must be fetched via media proxy
+  if (img.includes('storage.googleapis.com/uwo-document/')) {
+    const objectPath = img.split('storage.googleapis.com/uwo-document/')[1].replace(/^\/+/, '');
+    // In local dev, load directly from authoritative production CDN to guarantee 100% image availability
+    if (typeof window !== 'undefined' && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+      return `https://uwo24.com/api/media/${objectPath}`;
+    }
+    return `${API_URL}/media/${objectPath}`;
+  }
+  if (img.includes('/api/media/')) {
+    const mediaPath = img.split('/api/media/')[1].replace(/^\/+/, '');
+    if (typeof window !== 'undefined' && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+      return `https://uwo24.com/api/media/${mediaPath}`;
+    }
+    return `${API_URL}/media/${mediaPath}`;
+  }
+  if (img.startsWith('http://') || img.startsWith('https://') || img.startsWith('data:')) {
+    return img;
+  }
+  if (img.startsWith('/uploads/')) {
+    if (typeof window !== 'undefined' && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+      return `https://uwo24.com${img}`;
+    }
+    return `${BACKEND_BASE}${img}`;
+  }
+  return `${API_URL}/media/${img.replace(/^\/+/, '')}`;
+}
+
+// Contact Form submission
+export async function submitContact(formData) {
+  return await apiRequest('/contacts', {
+    method: 'POST',
+    body: JSON.stringify(formData)
+  });
+}
+
+// Newsletter Subscription
+export async function subscribeNewsletter(email) {
+  return await apiRequest('/subscribers', {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  });
+}
+
+// Referral / Earn & Refer submission
+export async function submitReferral(payload) {
+  try {
+    return await apiRequest('/affiliate/referrals', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    return await apiRequest('/referrals', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+}
+
+// Register user in Referral Portal
+export async function registerPortalUser(name, email) {
+  try {
+    const res = await fetch(`${REFERRAL_BACKEND}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email })
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn('[Portal Registration Warning]:', err.message);
+    return null;
+  }
+}
